@@ -1,0 +1,123 @@
+<script>
+(function() {
+  const overlay  = document.getElementById('quizPopup');
+  const closeBtn = document.getElementById('qpopClose');
+  const segs     = [0,1,2,3,4].map(i => document.getElementById('seg'+i));
+  const steps    = [0,1,2,3,4].map(i => document.getElementById('step'+i));
+  const answers  = {};
+  let current = 0;
+
+  /* ── Open popup ── */
+  function openPopup() {
+    current = 0;
+    showStep(0);
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  /* ── Close popup ── */
+  function closePopup() {
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  /* ── Show step ── */
+  function showStep(n) {
+    steps.forEach((s,i) => s.classList.toggle('active', i === n));
+    segs.forEach((seg, i) => {
+      seg.classList.remove('done', 'active');
+      if (i < n)      seg.classList.add('done');
+      else if (i === n) seg.classList.add('active');
+    });
+    current = n;
+  }
+
+  /* ── Option selection ── */
+  document.querySelectorAll('.qpop-option').forEach(opt => {
+    opt.addEventListener('click', function() {
+      const s = this.dataset.step;
+      document.querySelectorAll(`.qpop-option[data-step="${s}"]`).forEach(o => o.classList.remove('selected'));
+      this.classList.add('selected');
+      answers[s] = this.dataset.val;
+    });
+  });
+
+  /* ── Next buttons ── */
+  function bindNext(btnId, stepIdx, validate) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      if (validate && !validate()) return;
+      showStep(stepIdx + 1);
+    });
+  }
+
+  bindNext('next0', 0, () => {
+    if (!answers[0]) { flashStep(0); return false; }
+    return true;
+  });
+  bindNext('next1', 1, () => {
+    if (!answers[1]) { flashStep(1); return false; }
+    return true;
+  });
+  bindNext('next2', 2, () => {
+    if (!answers[2]) { flashStep(2); return false; }
+    return true;
+  });
+  document.getElementById('next3').addEventListener('click', function() {
+    const name  = document.getElementById('qpopName').value.trim();
+    const phone = document.getElementById('qpopPhone').value.trim();
+    if (!name || !phone) {
+      if (!name)  document.getElementById('qpopName').style.borderColor  = 'rgba(249,115,22,0.8)';
+      if (!phone) document.getElementById('qpopPhone').style.borderColor = 'rgba(249,115,22,0.8)';
+      return;
+    }
+    showStep(4);
+  });
+
+  /* Reset field error on input */
+  ['qpopName','qpopPhone'].forEach(id => {
+    document.getElementById(id).addEventListener('input', function() {
+      this.style.borderColor = '';
+    });
+  });
+
+  /* ── Back buttons ── */
+  document.querySelectorAll('.qpop-back').forEach(btn => {
+    btn.addEventListener('click', function() {
+      showStep(parseInt(this.dataset.target));
+    });
+  });
+
+  /* Flash unselected step */
+  function flashStep(n) {
+    const step = document.getElementById('step'+n);
+    step.style.animation = 'none';
+    step.style.transition = 'opacity 0.1s';
+    step.style.opacity = '0.5';
+    setTimeout(() => { step.style.opacity = '1'; }, 150);
+    setTimeout(() => { step.style.opacity = '0.5'; }, 300);
+    setTimeout(() => { step.style.opacity = '1'; }, 450);
+  }
+
+  /* ── Wire all CTA buttons ── */
+  document.querySelectorAll('.cta-btn:not(.cta-watch), .invest-cta-btn, .final-cta-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      openPopup();
+    });
+  });
+
+  /* ── Close on overlay click ── */
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) closePopup();
+  });
+  closeBtn.addEventListener('click', closePopup);
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closePopup();
+  });
+})();
+</script>
+
+</body>
+</html>

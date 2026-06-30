@@ -1,0 +1,427 @@
+<!-- ═══════════════════════════════════════════ -->
+<!--  QUIZ POPUP MODAL                           -->
+<!-- ═══════════════════════════════════════════ -->
+
+<style>
+  /* ── OVERLAY ── */
+  .qpop-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.82);
+    backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .qpop-overlay.active { display: flex; }
+
+  /* ── MODAL ── */
+  .qpop-modal {
+    width: 100%; max-width: 460px;
+    background: #14161e;
+    border-radius: 16px;
+    border: 1px solid rgba(249,115,22,0.2);
+    box-shadow: 0 0 80px rgba(249,115,22,0.12), 0 32px 64px rgba(0,0,0,0.7);
+    overflow: hidden;
+    position: relative;
+    animation: qpopIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  @keyframes qpopIn {
+    from { opacity:0; transform: scale(0.92) translateY(16px); }
+    to   { opacity:1; transform: scale(1) translateY(0); }
+  }
+
+  /* ── PROGRESS BAR ── */
+  .qpop-progress {
+    display: flex; gap: 5px;
+    padding: 18px 52px 0 20px;
+  }
+  .qpop-seg {
+    flex: 1; height: 3px; border-radius: 100px;
+    background: rgba(255,255,255,0.1);
+    transition: background 0.35s ease;
+  }
+  .qpop-seg.done { background: #f97316; }
+  .qpop-seg.active { background: linear-gradient(90deg, #f97316, #fbbf24); }
+
+  /* ── CLOSE BTN ── */
+  .qpop-close {
+    position: absolute; top: 14px; right: 16px;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5);
+    font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, color 0.2s;
+  }
+  .qpop-close:hover { background: rgba(255,255,255,0.13); color: #fff; }
+
+  /* ── STEP BODY ── */
+  .qpop-step { display: none; }
+  .qpop-step.active { display: block; }
+
+  .qpop-body {
+    padding: 22px 20px 0;
+  }
+  .qpop-q {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 800; font-size: 18px;
+    text-transform: uppercase; color: #fff;
+    line-height: 1.2; margin-bottom: 18px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── RADIO OPTIONS ── */
+  .qpop-options { display: flex; flex-direction: column; gap: 8px; }
+
+  .qpop-option {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 16px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    user-select: none;
+  }
+  .qpop-option:hover {
+    border-color: rgba(249,115,22,0.3);
+    background: rgba(249,115,22,0.05);
+  }
+  .qpop-option.selected {
+    border-color: rgba(249,115,22,0.6);
+    background: rgba(249,115,22,0.09);
+  }
+
+  .qpop-radio {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.2);
+    flex-shrink: 0; position: relative;
+    transition: border-color 0.2s;
+  }
+  .qpop-option.selected .qpop-radio {
+    border-color: #f97316;
+  }
+  .qpop-option.selected .qpop-radio::after {
+    content: '';
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #f97316;
+  }
+  .qpop-option-text {
+    font-size: 13.5px; color: #d0d0d0; font-weight: 500;
+    line-height: 1.4;
+  }
+  .qpop-option.selected .qpop-option-text { color: #fff; }
+
+  /* ── STEP 4: FORM ── */
+  .qpop-form-header {
+    padding: 22px 20px 0;
+  }
+  .qpop-form-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 800; font-size: 18px;
+    text-transform: uppercase; color: #fff;
+    line-height: 1.2; margin-bottom: 4px;
+  }
+  .qpop-form-sub {
+    font-size: 12px; color: var(--muted);
+    margin-bottom: 18px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .qpop-form-sub span { color: #f97316; }
+  .qpop-fields { padding: 0 20px; display: flex; flex-direction: column; gap: 12px; }
+  .qpop-field-label {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 5px;
+  }
+  .qpop-field-req { color: var(--accent); }
+  .qpop-input {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13.5px; color: #fff;
+    font-family: 'Barlow', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .qpop-input::placeholder { color: rgba(255,255,255,0.25); }
+  .qpop-input:focus { border-color: rgba(249,115,22,0.5); }
+  .qpop-privacy {
+    font-size: 11px; color: var(--muted);
+    text-align: center; padding: 8px 20px 0;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+  }
+
+  /* ── STEP 5: CONFIRMATION ── */
+  .qpop-confirm {
+    padding: 22px 20px 0;
+    text-align: center;
+  }
+  .qpop-confirm-icon {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, rgba(249,115,22,0.2), rgba(251,191,36,0.1));
+    border: 1px solid rgba(249,115,22,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; margin: 0 auto 14px;
+  }
+  .qpop-confirm-tag {
+    display: inline-block;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    color: #fbbf24;
+    background: rgba(251,191,36,0.1);
+    border: 1px solid rgba(251,191,36,0.25);
+    padding: 4px 12px; border-radius: 100px;
+    margin-bottom: 12px;
+  }
+  .qpop-price-box {
+    margin: 0 0 14px;
+    padding: 20px 18px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(249,115,22,0.2);
+    border-radius: 12px;
+  }
+  .qpop-price {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 800; font-size: 46px;
+    line-height: 1;
+    background: linear-gradient(90deg, #f97316, #fbbf24);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+  .qpop-price-label {
+    font-size: 11.5px; color: var(--muted);
+    margin-bottom: 14px;
+  }
+  .qpop-checklist {
+    list-style: none; display: flex; flex-direction: column; gap: 7px;
+    text-align: left; margin-bottom: 12px;
+  }
+  .qpop-checklist li {
+    font-size: 12.5px; color: #c8ccd6;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .qpop-checklist li::before {
+    content: '✓';
+    color: #fbbf24; font-weight: 700; font-size: 12px;
+    flex-shrink: 0;
+  }
+  .qpop-note {
+    font-size: 11px; color: var(--muted);
+    text-align: center; margin-bottom: 2px;
+  }
+  .qpop-book-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%;
+    background: linear-gradient(90deg, #f97316, #fb923c, #fbbf24);
+    background-size: 200% auto;
+    color: #000; font-family: 'Barlow', sans-serif;
+    font-weight: 700; font-size: 15px;
+    padding: 16px 24px; border-radius: 100px; border: none;
+    cursor: pointer; text-decoration: none;
+    box-shadow: 0 0 30px rgba(249,115,22,0.45), 0 4px 20px rgba(0,0,0,0.4);
+    transition: transform 0.2s, box-shadow 0.2s, background-position 0.4s;
+    animation: btnGlow 2.5s ease-in-out infinite;
+    margin: 0 20px; width: calc(100% - 40px);
+  }
+  .qpop-book-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 50px rgba(249,115,22,0.7), 0 8px 30px rgba(0,0,0,0.5);
+    background-position: right center;
+  }
+
+  /* ── FOOTER BAR ── */
+  .qpop-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    margin-top: 18px;
+    background: linear-gradient(90deg, #f59e0b, #f97316);
+    cursor: pointer;
+  }
+  .qpop-footer-only-next {
+    justify-content: flex-end;
+  }
+  .qpop-back {
+    font-family: 'Barlow', sans-serif;
+    font-size: 13px; font-weight: 700;
+    color: rgba(0,0,0,0.7); background: none; border: none;
+    cursor: pointer; display: flex; align-items: center; gap: 5px;
+    transition: color 0.2s;
+  }
+  .qpop-back:hover { color: #000; }
+  .qpop-next {
+    font-family: 'Barlow', sans-serif;
+    font-size: 14px; font-weight: 700; letter-spacing: 0.5px;
+    color: #000; background: none; border: none;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: gap 0.2s;
+  }
+  .qpop-next:hover { gap: 10px; }
+
+  /* confirm footer is different */
+  .qpop-footer-confirm {
+    padding: 14px 20px 18px;
+    margin-top: 4px;
+    background: transparent;
+  }
+</style>
+
+<!-- Modal HTML -->
+<div class="qpop-overlay" id="quizPopup">
+  <div class="qpop-modal">
+
+    <!-- Close -->
+    <button class="qpop-close" id="qpopClose">✕</button>
+
+    <!-- Progress Bar -->
+    <div class="qpop-progress" id="qpopProgress">
+      <div class="qpop-seg active" id="seg0"></div>
+      <div class="qpop-seg" id="seg1"></div>
+      <div class="qpop-seg" id="seg2"></div>
+      <div class="qpop-seg" id="seg3"></div>
+      <div class="qpop-seg" id="seg4"></div>
+    </div>
+
+    <!-- ── STEP 1 ── -->
+    <div class="qpop-step active" id="step0">
+      <div class="qpop-body">
+        <div class="qpop-q">What has stopped you from getting in shape until now?</div>
+        <div class="qpop-options">
+          <div class="qpop-option" data-step="0" data-val="guidance">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">I didn't have the right guidance</div>
+          </div>
+          <div class="qpop-option" data-step="0" data-val="time">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">I have no time with my busy schedule</div>
+          </div>
+          <div class="qpop-option" data-step="0" data-val="consistency">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">I've tried before but couldn't stay consistent</div>
+          </div>
+          <div class="qpop-option" data-step="0" data-val="afford">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">I didn't think I could afford it</div>
+          </div>
+        </div>
+      </div>
+      <div class="qpop-footer qpop-footer-only-next">
+        <button class="qpop-next" id="next0">NEXT →</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 2 ── -->
+    <div class="qpop-step" id="step1">
+      <div class="qpop-body">
+        <div class="qpop-q">Have you tried any fitness program, coach or diet before?</div>
+        <div class="qpop-options">
+          <div class="qpop-option" data-step="1" data-val="first">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">No, this would be my first time</div>
+          </div>
+          <div class="qpop-option" data-step="1" data-val="quit">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">Yes — but I quit or it didn't work</div>
+          </div>
+          <div class="qpop-option" data-step="1" data-val="lost">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">Yes — it worked but I lost progress after stopping</div>
+          </div>
+        </div>
+      </div>
+      <div class="qpop-footer">
+        <button class="qpop-back" data-target="0">← BACK</button>
+        <button class="qpop-next" id="next1">NEXT →</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 3 ── -->
+    <div class="qpop-step" id="step2">
+      <div class="qpop-body">
+        <div class="qpop-q">What is your #1 goal from this program?</div>
+        <div class="qpop-options">
+          <div class="qpop-option" data-step="2" data-val="lean">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">Lose weight &amp; get lean</div>
+          </div>
+          <div class="qpop-option" data-step="2" data-val="muscle">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">Build muscle &amp; look athletic</div>
+          </div>
+          <div class="qpop-option" data-step="2" data-val="energy">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">Improve energy, stamina &amp; performance</div>
+          </div>
+          <div class="qpop-option" data-step="2" data-val="recomp">
+            <div class="qpop-radio"></div>
+            <div class="qpop-option-text">Complete body recomposition — lose fat &amp; build muscle together</div>
+          </div>
+        </div>
+      </div>
+      <div class="qpop-footer">
+        <button class="qpop-back" data-target="1">← BACK</button>
+        <button class="qpop-next" id="next2">NEXT →</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 4: DETAILS ── -->
+    <div class="qpop-step" id="step3">
+      <div class="qpop-form-header">
+        <div class="qpop-form-title">Great! One last step — your details</div>
+        <div class="qpop-form-sub"><span>⏱</span> Almost done — we need this to book your call</div>
+      </div>
+      <div class="qpop-fields">
+        <div>
+          <div class="qpop-field-label">Full Name <span class="qpop-field-req">*</span></div>
+          <input class="qpop-input" id="qpopName" type="text" placeholder="Enter your full name">
+        </div>
+        <div>
+          <div class="qpop-field-label">Email</div>
+          <input class="qpop-input" id="qpopEmail" type="email" placeholder="Enter your email (optional)">
+        </div>
+        <div>
+          <div class="qpop-field-label">Phone Number <span class="qpop-field-req">*</span></div>
+          <input class="qpop-input" id="qpopPhone" type="tel" placeholder="Enter your phone number">
+        </div>
+      </div>
+      <div class="qpop-privacy">🔒 We'll only contact you about your fitness plan</div>
+      <div class="qpop-footer">
+        <button class="qpop-back" data-target="2">← BACK</button>
+        <button class="qpop-next" id="next3">SUBMIT →</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 5: BOOKING ── -->
+    <div class="qpop-step" id="step4">
+      <div class="qpop-confirm">
+        <div class="qpop-confirm-icon">🎯</div>
+        <div class="qpop-confirm-tag">Health Audit</div>
+        <div class="qpop-price-box">
+          <div class="qpop-price">₹97</div>
+          <div class="qpop-price-label">Adjusted against program fee if you join</div>
+          <ul class="qpop-checklist">
+            <li>Full diagnostic audit of your body &amp; blood markers</li>
+            <li>90-day personalised roadmap</li>
+            <li>Fitness &amp; lifestyle assessment</li>
+          </ul>
+          <div class="qpop-note">45-min paid call · Fully dedicated to your plan</div>
+        </div>
+      </div>
+      <div class="qpop-footer-confirm">
+        <a href="#" class="qpop-book-btn">
+          Book My Health Audit Now →
+        </a>
+        <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--muted);">
+          Full refund if no clarity · No spam · No pressure
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /qpop-modal -->
+</div><!-- /qpop-overlay -->
+
