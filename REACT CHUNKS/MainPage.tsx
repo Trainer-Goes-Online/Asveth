@@ -8,6 +8,7 @@ import InvestmentSection from './InvestmentSection';
 import FinalCtaSection from './FinalCtaSection';
 import FooterSection from './FooterSection';
 import QuizPopup from './QuizPopup';
+import { PRICE_DISPLAY } from '../lib/siteConfig';
 
 const MainPage: React.FC = () => {
   const [isQuizOpen, setIsQuizOpen] = useState(false);
@@ -72,7 +73,7 @@ const MainPage: React.FC = () => {
         <div className="mobile-cta-content">
           <div className="mobile-cta-info">
             <div className="mobile-cta-title">Health Audit</div>
-            <div className="mobile-cta-price">Only ₹97</div>
+            <div className="mobile-cta-price">Only {PRICE_DISPLAY}</div>
           </div>
           <button 
             className="mobile-cta-btn"

@@ -1,22 +1,23 @@
 import React from 'react';
+import { SUPPORT_EMAIL } from '../lib/siteConfig';
 
 const FooterSection: React.FC = () => {
   const footerLinks = [
-    { text: "Privacy Policy", href: "#" },
-    { text: "Terms & Conditions", href: "#" },
-    { text: "Refund Policy", href: "#" },
-    { text: "Contact Us", href: "#" }
+    { text: "Privacy Policy", href: "/privacy-policy" },
+    { text: "Terms & Conditions", href: "/terms" },
+    { text: "Refund Policy", href: "/refund-policy" },
+    { text: "Contact Us", href: `mailto:${SUPPORT_EMAIL}` }
   ];
 
   return (
     <footer className="site-footer">
       <div className="footer-inner">
         <div className="footer-logo">
-          <img 
-            src="/athletic-indian-logo.png" 
-            alt="The Athletic Indian" 
+          <img
+            src="/athletic-indian-logo.png"
+            alt="The Athletic Indian"
             style={{
-              height: '48px',
+              height: '88px',
               width: 'auto',
               display: 'block',
               opacity: '0.85'

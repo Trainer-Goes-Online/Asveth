@@ -87,7 +87,7 @@ const CarouselSection: React.FC = () => {
           <p className="carousel-eyebrow counter-trigger">
             <strong><span className="counter-number">100+</span> men</strong> have gone through the Diagnostic-First Method
           </p>
-          <h2 className="carousel-headline">See What Asveth's Clients Achieve</h2>
+          <h2 className="carousel-headline">See What Our Clients Achieve</h2>
         </div>
 
         <div className="carousel-track-wrap">

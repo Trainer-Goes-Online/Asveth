@@ -1,4 +1,5 @@
 import React from 'react';
+import { PRICE, PRICE_DISPLAY } from '../lib/siteConfig';
 
 interface InvestmentSectionProps {
   onOpenQuiz?: () => void;
@@ -9,18 +10,18 @@ const InvestmentSection: React.FC<InvestmentSectionProps> = ({ onOpenQuiz }) => 
     "People who pay show up. Free sessions get ignored.",
     "This is a filter, not a barrier. We only work with serious men.",
     "One gym PT session costs ₹1,500 and skips your blood markers entirely.",
-    "₹6,000 worth of health expertise and guidance. You pay ₹97.",
+    `₹6,000 worth of health expertise and guidance. You pay ${PRICE_DISPLAY}.`,
     "No clarity? Full refund. No forms. Just WhatsApp us.",
     "Every coach you've tried started with a plan. None of them started with an assessment.",
     "Every month in that AC office, your D3 drops and the body you want gets harder to build.",
-    "₹97 to understand exactly what you need to investigate. Or keep wondering."
+    `${PRICE_DISPLAY} to understand exactly what you need to investigate. Or keep wondering.`
   ];
 
   const priceAnchors = [
     { label: "One health consultation", price: "₹2,000" },
     { label: "One PT session at gym", price: "₹1,500" },
     { label: "Starbucks for two people", price: "₹1,000" },
-    { label: "Your Health Audit + roadmap", price: "₹97", highlight: true }
+    { label: "Your Health Audit + roadmap", price: PRICE_DISPLAY, highlight: true }
   ];
 
   return (
@@ -29,7 +30,7 @@ const InvestmentSection: React.FC<InvestmentSectionProps> = ({ onOpenQuiz }) => 
 
       <section className="invest-section">
         <p className="invest-eyebrow">Investment</p>
-        <h2 className="invest-headline">Why Only ₹97?</h2>
+        <h2 className="invest-headline">Why Only {PRICE_DISPLAY}?</h2>
         <div className="invest-rule"></div>
 
         <div className="invest-card">
@@ -52,7 +53,7 @@ const InvestmentSection: React.FC<InvestmentSectionProps> = ({ onOpenQuiz }) => 
           <div className="invest-right">
             <div className="invest-price">
               <span className="invest-rupee">₹</span>
-              <span className="invest-amount">97</span>
+              <span className="invest-amount">{PRICE.toLocaleString('en-IN')}</span>
             </div>
             <div className="invest-price-label">One-Time · Risk-Free</div>
 
@@ -65,7 +66,7 @@ const InvestmentSection: React.FC<InvestmentSectionProps> = ({ onOpenQuiz }) => 
               }}
             >
               Book My Health Audit Now
-              <span className="invest-cta-sub">₹97 · Full refund if no clarity</span>
+              <span className="invest-cta-sub">{PRICE_DISPLAY} · Full refund if no clarity</span>
             </a>
 
             <div className="invest-anchors">

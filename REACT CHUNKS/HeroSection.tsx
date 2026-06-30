@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { PRICE_DISPLAY } from '../lib/siteConfig';
 
 interface HeroSectionProps {
   onOpenQuiz?: () => void;
@@ -25,7 +26,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onOpenQuiz }) => {
   
   const proofStats = [
     { label: '100+ men diagnosed', bold: '100+' },
-    { label: '₹6,000 value for ₹97', bold: '₹6,000' }
+    { label: `₹6,000 value for ${PRICE_DISPLAY}`, bold: '₹6,000' }
   ];
 
   const bottomBarItems = [
@@ -65,11 +66,11 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onOpenQuiz }) => {
           {/* TOP BAR */}
           <div className="top-bar">
             <div className="logo-wrap">
-              <img 
-                src="/athletic-indian-logo.png" 
-                alt="The Athletic Indian" 
+              <img
+                src="/athletic-indian-logo.png"
+                alt="The Athletic Indian"
                 style={{
-                  height: '56px',
+                  height: '88px',
                   width: 'auto',
                   display: 'block'
                 }}
@@ -81,7 +82,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onOpenQuiz }) => {
           <div className="hero-body">
             <div className="pre-headline">
               <div className="pre-dot"></div>
-              The Health Audit — Only ₹97
+              The Health Audit — Only {PRICE_DISPLAY}
             </div>
 
             <h1 className="headline">
@@ -96,7 +97,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onOpenQuiz }) => {
             </h1>
 
             <p className="subheadline">
-              Watch this if you've been trying — and your body still isn't changing. Most coaches hand you a plan. Asveth <strong>shows you which blood markers to test first</strong> — your <strong>D3, testosterone, thyroid, HbA1c</strong> — identifies exactly what to investigate, then guides you through the process. Men who follow this approach <strong>lose 7–10kg and add 2 inches to their chest and shoulders in 90 days.</strong>
+              Watch this if you've been trying — and your body still isn't changing. Most coaches hand you a plan. We <strong>show you which blood markers to test first</strong> — your <strong>D3, testosterone, thyroid, HbA1c</strong> — identifies exactly what to investigate, then guides you through the process. Men who follow this approach <strong>lose 7–10kg and add 2 inches to their chest and shoulders in 90 days.</strong>
             </p>
 
             <div className="cta-wrap">
@@ -105,7 +106,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onOpenQuiz }) => {
                 className="cta-btn cta-watch"
                 onClick={scrollToVideo}
               >
-                Watch How Asveth Fixes What Other Coaches Miss
+                Watch How We Fix What Other Coaches Miss
               </a>
             </div>
 
