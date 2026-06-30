@@ -70,7 +70,14 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 .logo-wrap { display: flex; align-items: center; gap: 9px; }
-.logo-wrap img { transition: height 0.2s ease; }
+/* enlarged header logo (uses the vertically-trimmed wide lockup) — fluid across
+   all devices so it fills the bar instead of leaving dead space */
+.logo-wrap img {
+  height: clamp(58px, 8vw, 88px);
+  width: auto;
+  display: block;
+  transition: height 0.2s ease;
+}
 .logo-icon {
   width: 32px; height: 32px;
   background: linear-gradient(135deg, var(--accent), var(--accent2));
@@ -1150,8 +1157,7 @@ html, body {
     padding: 12px 20px;
   }
 
-  /* Keep the enlarged logo proportional on phones */
-  .logo-wrap img { height: 64px !important; }
+  /* Header logo size is handled fluidly via clamp() in the base rule. */
   .footer-logo img { height: 64px !important; }
 
   .logo-text {

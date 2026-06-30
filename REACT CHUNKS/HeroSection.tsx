@@ -68,10 +68,9 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onOpenQuiz }) => {
           <div className="top-bar">
             <div className="logo-wrap">
               <img
-                src="/athletic-indian-logo.png"
+                src="/athletic-indian-logo-wide.png"
                 alt="The Athletic Indian"
                 style={{
-                  height: '88px',
                   width: 'auto',
                   display: 'block'
                 }}
