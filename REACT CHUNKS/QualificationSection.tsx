@@ -31,7 +31,7 @@ const QualificationSection: React.FC = () => {
           This Is <span className="not">NOT</span> For Everyone
         </h2>
         <p className="qualify-sub">
-          Asveth works with men who are serious about understanding their body — not looking for shortcuts or someone to hand them a PDF.
+          We work with men who are serious about understanding their body — not looking for shortcuts or someone to hand them a PDF.
         </p>
 
         <div className="qualify-grid">

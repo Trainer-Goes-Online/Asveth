@@ -1,19 +1,42 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { PRICE_DISPLAY } from '../lib/siteConfig';
 
 interface QuizPopupProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+interface FormData {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+interface FormErrors {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
 const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<{[key: string]: string}>({});
+  const [formData, setFormData] = useState<FormData>({ name: '', email: '', phone: '' });
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [submitting, setSubmitting] = useState(false);
 
   // Reset state when popup opens
   useEffect(() => {
     if (isOpen) {
       setCurrentStep(0);
       setAnswers({});
+      setFormData({ name: '', email: '', phone: '' });
+      setFormErrors({});
+      setSubmitting(false);
     }
   }, [isOpen]);
 
@@ -51,30 +74,81 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
     return !!answers[step.toString()];
   };
 
-  const validateForm = (): boolean => {
-    const nameInput = document.getElementById('qpopName') as HTMLInputElement;
-    const phoneInput = document.getElementById('qpopPhone') as HTMLInputElement;
-    
-    const name = nameInput?.value.trim();
-    const phone = phoneInput?.value.trim();
-    
-    let isValid = true;
-    
-    if (!name) {
-      if (nameInput) nameInput.style.borderColor = 'rgba(249,115,22,0.8)';
-      isValid = false;
-    }
-    if (!phone) {
-      if (phoneInput) phoneInput.style.borderColor = 'rgba(249,115,22,0.8)';
-      isValid = false;
-    }
-    
-    return isValid;
+  const handleFieldChange = (field: keyof FormData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear the error for this field as the user corrects it
+    setFormErrors(prev => ({ ...prev, [field]: undefined }));
   };
 
-  const resetFieldError = (fieldId: string) => {
-    const field = document.getElementById(fieldId) as HTMLInputElement;
-    if (field) field.style.borderColor = '';
+  const validateDetails = (): FormErrors => {
+    const errors: FormErrors = {};
+
+    const name = formData.name.trim();
+    const email = formData.email.trim();
+    const phone = formData.phone.trim();
+
+    // Name: required, at least 2 characters, letters/spaces only
+    if (!name) {
+      errors.name = 'Please enter your full name.';
+    } else if (name.length < 2) {
+      errors.name = 'Name must be at least 2 characters.';
+    } else if (!/^[a-zA-Z][a-zA-Z\s.'-]*$/.test(name)) {
+      errors.name = 'Please enter a valid name.';
+    }
+
+    // Email: optional, but must be valid if provided
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = 'Please enter a valid email address.';
+    }
+
+    // Phone: required, 10–15 digits (optional leading +)
+    const digits = phone.replace(/[^\d]/g, '');
+    if (!phone) {
+      errors.phone = 'Please enter your phone number.';
+    } else if (!/^\+?[\d\s-]+$/.test(phone)) {
+      errors.phone = 'Phone can only contain numbers.';
+    } else if (digits.length < 10 || digits.length > 15) {
+      errors.phone = 'Enter a valid phone number (10–15 digits).';
+    }
+
+    return errors;
+  };
+
+  const handleSubmitDetails = () => {
+    const errors = validateDetails();
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    setSubmitting(true);
+
+    const fullName = formData.name.trim();
+    const firstName = fullName.split(/\s+/)[0] || '';
+    const lastName = fullName.split(/\s+/).slice(1).join(' ');
+
+    // Persist the lead so the checkout page can prefill / reference it
+    try {
+      localStorage.setItem(
+        'healthAuditLead',
+        JSON.stringify({
+          name: fullName,
+          firstName,
+          lastName,
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          quiz: answers,
+          submittedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      /* ignore storage errors */
+    }
+
+    // NOTE: the Pabbly webhook is intentionally NOT fired here. It fires only
+    // once payment is successful (or a 100%-off coupon is redeemed) on the
+    // checkout page. The details are stored above for that event.
+
+    // Redirect to the checkout page after successful submission
+    router.push('/checkout');
   };
 
   if (!isOpen) return null;
@@ -267,6 +341,14 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
         }
         .qpop-input::placeholder { color: rgba(255,255,255,0.25); }
         .qpop-input:focus { border-color: rgba(249,115,22,0.5); }
+        .qpop-input-error { border-color: rgba(239,68,68,0.8) !important; }
+        .qpop-error-msg {
+          margin-top: 5px;
+          font-size: 11.5px;
+          color: #fca5a5;
+          line-height: 1.3;
+        }
+        .qpop-next:disabled { opacity: 0.6; cursor: progress; }
         .qpop-privacy {
           font-size: 11px;
           color: var(--muted);
@@ -561,37 +643,54 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
             <div className="qpop-fields">
               <div>
                 <div className="qpop-field-label">Full Name <span className="qpop-field-req">*</span></div>
-                <input 
-                  className="qpop-input" 
-                  id="qpopName" 
-                  type="text" 
+                <input
+                  className={`qpop-input ${formErrors.name ? 'qpop-input-error' : ''}`}
+                  id="qpopName"
+                  type="text"
+                  autoComplete="name"
                   placeholder="Enter your full name"
-                  onInput={() => resetFieldError('qpopName')}
+                  value={formData.name}
+                  onChange={(e) => handleFieldChange('name', e.target.value)}
                 />
+                {formErrors.name && <div className="qpop-error-msg">{formErrors.name}</div>}
               </div>
               <div>
                 <div className="qpop-field-label">Email</div>
-                <input className="qpop-input" id="qpopEmail" type="email" placeholder="Enter your email (optional)" />
+                <input
+                  className={`qpop-input ${formErrors.email ? 'qpop-input-error' : ''}`}
+                  id="qpopEmail"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="Enter your email (optional)"
+                  value={formData.email}
+                  onChange={(e) => handleFieldChange('email', e.target.value)}
+                />
+                {formErrors.email && <div className="qpop-error-msg">{formErrors.email}</div>}
               </div>
               <div>
                 <div className="qpop-field-label">Phone Number <span className="qpop-field-req">*</span></div>
-                <input 
-                  className="qpop-input" 
-                  id="qpopPhone" 
-                  type="tel" 
+                <input
+                  className={`qpop-input ${formErrors.phone ? 'qpop-input-error' : ''}`}
+                  id="qpopPhone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   placeholder="Enter your phone number"
-                  onInput={() => resetFieldError('qpopPhone')}
+                  value={formData.phone}
+                  onChange={(e) => handleFieldChange('phone', e.target.value)}
                 />
+                {formErrors.phone && <div className="qpop-error-msg">{formErrors.phone}</div>}
               </div>
             </div>
             <div className="qpop-privacy">🔒 We'll only contact you about your fitness plan</div>
             <div className="qpop-footer">
               <button className="qpop-back" onClick={() => setCurrentStep(2)}>← BACK</button>
-              <button 
-                className="qpop-next" 
-                onClick={() => handleNext(4, validateForm)}
+              <button
+                className="qpop-next"
+                onClick={handleSubmitDetails}
+                disabled={submitting}
               >
-                SUBMIT →
+                {submitting ? 'PROCESSING…' : 'SUBMIT →'}
               </button>
             </div>
           </div>
@@ -602,7 +701,7 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
               <div className="qpop-confirm-icon">🎯</div>
               <div className="qpop-confirm-tag">Health Audit</div>
               <div className="qpop-price-box">
-                <div className="qpop-price">₹97</div>
+                <div className="qpop-price">{PRICE_DISPLAY}</div>
                 <div className="qpop-price-label">Adjusted against program fee if you join</div>
                 <ul className="qpop-checklist">
                   <li>Complete health assessment consultation</li>
@@ -613,7 +712,7 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
               </div>
             </div>
             <div className="qpop-footer-confirm">
-              <a href="#" className="qpop-book-btn">
+              <a href="/checkout" className="qpop-book-btn">
                 Book My Health Audit Now →
               </a>
               <div style={{textAlign:'center',marginTop:'10px',fontSize:'11px',color:'var(--muted)'}}>
