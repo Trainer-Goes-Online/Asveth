@@ -351,7 +351,7 @@ html, body {
 
 .step-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;        /* number node centred against its card */
   gap: 0;
   position: relative;
   padding-bottom: 36px;
@@ -365,9 +365,9 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   width: 80px;
   flex-shrink: 0;
-  padding-top: 4px;
 }
 
 .step-num {
@@ -399,26 +399,34 @@ html, body {
               0 0 60px rgba(251,191,36,0.35);
 }
 
-/* continuous vertical rail connecting node centres (Step 1 → 2 → 3) */
-.step-line {
+/* one continuous vertical rail (positioned via JS to span node-1 → node-N
+   centres). The dim track is the base; the fill grows with scroll. */
+.steps-rail {
   position: absolute;
-  left: 40px;                 /* centre of the 80px node column */
-  top: 30px;                  /* centre of this node */
-  bottom: -30px;              /* reach the centre of the next node */
-  transform: translateX(-50%);
   width: 2px;
+  transform: translateX(-50%);
   z-index: 0;
-  background: linear-gradient(180deg, rgba(249,115,22,0.55) 0%, rgba(249,115,22,0.2) 100%);
-  transition: background 0.5s ease, box-shadow 0.5s ease;
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(249,115,22,0.28) 0%, rgba(249,115,22,0.12) 100%);
+  overflow: hidden;
 }
-.step-row:last-child .step-line {
-  display: none;
+.steps-rail-fill {
+  width: 100%;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #fbbf24 0%, #f97316 100%);
+  box-shadow: 0 0 12px rgba(249,115,22,0.55);
+  transition: height 0.18s ease-out;
+  will-change: height;
 }
 
-/* rail segment fills bright once the next node has lit up */
-.step-row.line-on .step-line {
-  background: linear-gradient(180deg, rgba(251,191,36,0.95) 0%, rgba(249,115,22,0.8) 100%);
-  box-shadow: 0 0 14px rgba(249,115,22,0.45);
+/* the most-recently lit node gently pulses, like the reference timelines */
+@keyframes stepNodePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(251,191,36,0.5), 0 0 30px rgba(249,115,22,0.7), 0 0 60px rgba(251,191,36,0.35); }
+  70%  { box-shadow: 0 0 0 16px rgba(251,191,36,0), 0 0 30px rgba(249,115,22,0.7), 0 0 60px rgba(251,191,36,0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(251,191,36,0), 0 0 30px rgba(249,115,22,0.7), 0 0 60px rgba(251,191,36,0.35); }
+}
+.step-num.is-current {
+  animation: stepNodePulse 1.8s ease-out infinite;
 }
 
 /* right column: card */
@@ -1210,26 +1218,29 @@ html, body {
     font-size: 8px;
   }
   
+  /* mobile: compact left rail — numbers centred against each card, card right */
   .step-row {
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
+    padding-bottom: 28px;
   }
-  
+
   .step-left {
-    width: auto;
-    margin-bottom: 16px;
+    width: 58px;
+    margin-bottom: 0;
   }
-  
-  /* mobile: centred rail behind opaque cards, visible in the gaps */
-  .step-line {
-    display: block;
-    left: 50%;
+
+  .step-num {
+    width: 44px;
+    height: 44px;
+    font-size: 15px;
   }
 
   .step-card {
-    margin-left: 0;
-    margin-bottom: 28px;
+    margin-left: 6px;
+    margin-bottom: 0;
     background: #0d1018;
+    padding: 20px 18px 22px;
   }
   
   .check-item {
@@ -2309,7 +2320,10 @@ html, body {
   .mentor-photo-card,
   .qualify-card,
   .play-btn,
-  .strategy-card {
+  .strategy-card,
+  .step-num,
+  .step-num.is-current,
+  .steps-rail-fill {
     transition: none !important;
     animation: none !important;
   }
@@ -2423,27 +2437,40 @@ html, body {
   border-radius: 16px;
   padding: 30px 28px;
 }
-.ck-summary .ck-includes {
+.ck-includes {
   list-style: none;
-  margin: 22px 0 0;
+  margin: 4px 0 2px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 14px;
 }
-.ck-summary .ck-includes li {
-  position: relative;
-  padding-left: 28px;
+.ck-includes li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   font-size: 14px;
-  color: #c8ccd6;
+  color: #e8eaf0;
   line-height: 1.45;
 }
-.ck-summary .ck-includes li::before {
-  content: '✓';
-  position: absolute;
-  left: 0;
-  top: 0;
+.ck-includes-text { padding-top: 1px; }
+.ck-check {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   color: var(--accent2);
-  font-weight: 800;
+  background: rgba(249,115,22,0.12);
+  border: 1px solid rgba(249,115,22,0.35);
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.05);
+}
+.ck-check svg {
+  width: 13px;
+  height: 13px;
+  display: block;
 }
 .ck-lead-chip {
   margin-top: 22px;

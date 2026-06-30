@@ -14,7 +14,8 @@ import {
   PRODUCT_NAME,
   FREE_COUPON_CODE,
 } from '../../lib/siteConfig';
-import { COUNTRIES, DEFAULT_COUNTRY, sendLead, newPurchaseEventId } from '../../lib/tracking';
+import { COUNTRIES, DEFAULT_COUNTRY, confirmPurchase, newPurchaseEventId } from '../../lib/tracking';
+import { validateName, validateEmail, validatePhone } from '../../lib/validation';
 
 declare global {
   interface Window {
@@ -67,12 +68,25 @@ export default function CheckoutPage() {
       if (!raw) return;
       const lead = JSON.parse(raw);
       const fullName: string = lead.name || '';
+      const iso: string = lead.country_code || DEFAULT_COUNTRY.iso;
+      const country = COUNTRIES.find((c) => c.iso === iso) || DEFAULT_COUNTRY;
+
+      // Prefer the stored national number; otherwise strip the exact dial code
+      // from the full phone (never a greedy 1–3 digit guess that drops a digit).
+      let phone: string = lead.phone_national || '';
+      if (!phone && lead.phone) {
+        const digits = String(lead.phone).replace(/\D/g, '');
+        const dial = country.dial.replace(/\D/g, '');
+        phone = dial && digits.startsWith(dial) ? digits.slice(dial.length) : digits;
+      }
+
       setForm((prev) => ({
         ...prev,
         firstName: lead.firstName || fullName.split(/\s+/)[0] || '',
         lastName: lead.lastName || fullName.split(/\s+/).slice(1).join(' ') || '',
         email: lead.email || '',
-        phone: (lead.phone || '').replace(/^\+?\d{1,3}[\s-]?/, '') || lead.phone || '',
+        countryIso: iso,
+        phone,
       }));
     } catch {
       /* ignore */
@@ -81,7 +95,13 @@ export default function CheckoutPage() {
 
   const setField = (field: keyof CheckoutForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
-    if (field in errors) setErrors((prev) => ({ ...prev, [field]: undefined }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      // Changing the country clears any (now stale) phone error.
+      if (field === 'countryIso') delete next.phone;
+      else delete next[field as keyof CheckoutErrors];
+      return next;
+    });
   };
 
   const selectedCountry = COUNTRIES.find((c) => c.iso === form.countryIso) || DEFAULT_COUNTRY;
@@ -91,28 +111,17 @@ export default function CheckoutPage() {
 
   const validate = (): CheckoutErrors => {
     const e: CheckoutErrors = {};
-    const nameRe = /^[a-zA-Z][a-zA-Z\s.'-]*$/;
-
-    if (!form.firstName.trim()) e.firstName = 'First name is required.';
-    else if (form.firstName.trim().length < 2) e.firstName = 'Enter a valid first name.';
-    else if (!nameRe.test(form.firstName.trim())) e.firstName = 'Letters only.';
-
-    if (!form.lastName.trim()) e.lastName = 'Last name is required.';
-    else if (!nameRe.test(form.lastName.trim())) e.lastName = 'Letters only.';
-
-    if (!form.email.trim()) e.email = 'Email is required.';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
-      e.email = 'Enter a valid email address.';
-
-    const digits = form.phone.replace(/[^\d]/g, '');
-    if (!form.phone.trim()) e.phone = 'Phone number is required.';
-    else if (!/^[\d\s-]+$/.test(form.phone.trim())) e.phone = 'Numbers only.';
-    else if (digits.length < 6 || digits.length > 14)
-      e.phone = 'Enter a valid phone number.';
-
+    // Shared, strict validators — identical rules to the quiz/CTA form.
+    const fn = validateName(form.firstName, 'first name');
+    if (fn) e.firstName = fn;
+    const ln = validateName(form.lastName, 'last name', 1);
+    if (ln) e.lastName = ln;
+    const em = validateEmail(form.email, true);
+    if (em) e.email = em;
+    const ph = validatePhone(form.phone, form.countryIso); // per-country digit count
+    if (ph) e.phone = ph;
     if (!form.city.trim()) e.city = 'City is required.';
     else if (form.city.trim().length < 2) e.city = 'Enter a valid city.';
-
     return e;
   };
 
@@ -158,30 +167,25 @@ export default function CheckoutPage() {
     }
   };
 
-  // Fires the Pabbly webhook — ONLY ever called after a successful payment
-  // (real Razorpay success, or a 100%-off coupon which is a successful ₹0 sale).
-  const firePurchaseWebhook = (opts: {
+  // Builds the Purchase lead fields. The webhook itself is fired ONLY by the
+  // server (/api/razorpay-verify) after it verifies the Razorpay signature
+  // (or the coupon). The client can never fire the purchase webhook directly.
+  const purchaseFields = (opts: {
     amount: number;
     purchaseEventId: string;
     couponCode?: string;
-    paymentId?: string;
-    orderId?: string;
-  }) => {
-    sendLead({
-      event_name: 'Purchase',
-      first_name: form.firstName.trim(),
-      last_name: form.lastName.trim(),
-      email: form.email.trim(),
-      phone: fullPhone(),
-      city: form.city.trim(),
-      country_code: selectedCountry.iso,
-      amount: opts.amount,
-      purchase_event_id: opts.purchaseEventId,
-      coupon_code: opts.couponCode ?? '',
-      payment_id: opts.paymentId ?? '',
-      order_id: opts.orderId ?? '',
-    });
-  };
+  }) => ({
+    event_name: 'Purchase',
+    first_name: form.firstName.trim(),
+    last_name: form.lastName.trim(),
+    email: form.email.trim(),
+    phone: fullPhone(),
+    city: form.city.trim(),
+    country_code: selectedCountry.iso,
+    amount: opts.amount,
+    purchase_event_id: opts.purchaseEventId,
+    coupon_code: opts.couponCode ?? '',
+  });
 
   const handlePay = async () => {
     setPayError(null);
@@ -196,9 +200,21 @@ export default function CheckoutPage() {
     persistLead();
     const purchaseEventId = newPurchaseEventId();
 
-    // ── 100%-off coupon path: no Razorpay needed, treat as a successful sale ──
+    // ── 100%-off coupon path: no Razorpay needed; the server re-validates the
+    //    coupon before firing the purchase webhook. ──
     if (isFree) {
       setLoading(true);
+      const couponCode = couponInput.trim() || FREE_COUPON_CODE;
+      const result = await confirmPurchase({
+        mode: 'coupon',
+        coupon_code: couponCode,
+        fields: purchaseFields({ amount: 0, purchaseEventId, couponCode }),
+      });
+      if (!result.ok || !result.verified) {
+        setLoading(false);
+        setPayError(result.error || 'Coupon could not be verified. Please try again.');
+        return;
+      }
       try {
         localStorage.setItem(
           'healthAuditPayment',
@@ -206,7 +222,7 @@ export default function CheckoutPage() {
             paymentId: null,
             orderId: null,
             purchaseEventId,
-            coupon: FREE_COUPON_CODE,
+            coupon: couponCode,
             amount: 0,
             paidAt: new Date().toISOString(),
           })
@@ -214,11 +230,6 @@ export default function CheckoutPage() {
       } catch {
         /* ignore */
       }
-      firePurchaseWebhook({
-        amount: 0,
-        purchaseEventId,
-        couponCode: couponInput.trim() || FREE_COUPON_CODE,
-      });
       router.push('/book-call');
       return;
     }
@@ -254,8 +265,9 @@ export default function CheckoutPage() {
         },
         notes: { city: form.city.trim(), country: selectedCountry.iso },
         theme: { color: '#f97316' },
-        handler: function (response: any) {
-          // Payment confirmed by Razorpay → NOW fire the webhook.
+        handler: async function (response: any) {
+          // Payment reported successful by Razorpay. Send it to the server,
+          // which verifies the signature before firing the purchase webhook.
           try {
             localStorage.setItem(
               'healthAuditPayment',
@@ -270,12 +282,15 @@ export default function CheckoutPage() {
           } catch {
             /* ignore */
           }
-          firePurchaseWebhook({
-            amount: PRICE,
-            purchaseEventId,
-            paymentId: response.razorpay_payment_id ?? '',
-            orderId: response.razorpay_order_id ?? '',
+          await confirmPurchase({
+            mode: 'razorpay',
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature: response.razorpay_signature,
+            fields: purchaseFields({ amount: PRICE, purchaseEventId }),
           });
+          // The buyer has paid — always take them to booking, regardless of the
+          // webhook result (verification gates the webhook, not the UX).
           router.push('/book-call');
         },
         modal: {
@@ -420,10 +435,27 @@ export default function CheckoutPage() {
         {/* Order summary + pay */}
         <section className="ck-card ck-pay">
           <ul className="ck-includes">
-            <li>Live Zoom Health Audit (not a sales call)</li>
-            <li>Personalised testing &amp; action roadmap</li>
-            <li>Health gap identification</li>
-            <li>Full refund if you get no clarity</li>
+            {[
+              'Live Zoom Health Audit (not a sales call)',
+              'Personalised testing & action roadmap',
+              'Health gap identification',
+              'Full refund if you get no clarity',
+            ].map((item, i) => (
+              <li key={i}>
+                <span className="ck-check" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M5 13l4 4L19 7"
+                      stroke="currentColor"
+                      strokeWidth="2.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span className="ck-includes-text">{item}</span>
+              </li>
+            ))}
           </ul>
 
           <div className="ck-divider" />

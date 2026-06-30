@@ -2,7 +2,7 @@
 //  FB-ADS / MARKETING TRACKING
 //  Captures the parameters that arrive when a user lands from a
 //  Facebook ad, persists them (first-touch), and builds the payload
-//  that gets POSTed to /api/lead -> Pabbly webhook.
+//  POSTed to /api/form-lead (quiz lead) and /api/razorpay-verify (purchase).
 // ──────────────────────────────────────────────────────────────
 
 import { PRICE, IS_TEST } from './siteConfig';
@@ -40,31 +40,35 @@ export interface LeadPayload extends Tracking {
   coupon_code: string;
   payment_id: string;
   order_id: string;
-  // client_ip_address is added server-side in /api/lead
+  // client_ip_address is added server-side by the API route forwarder
 }
 
 // ── Country codes for the phone input (common markets, India default) ──
+// minDigits/maxDigits = allowed length of the NATIONAL number (excluding the
+// dial code). Used for strict, country-aware phone validation on both forms.
 export interface Country {
   iso: string;
   dial: string;
   name: string;
   flag: string;
+  minDigits: number;
+  maxDigits: number;
 }
 
 export const COUNTRIES: Country[] = [
-  { iso: 'IN', dial: '+91', name: 'India', flag: '🇮🇳' },
-  { iso: 'US', dial: '+1', name: 'United States', flag: '🇺🇸' },
-  { iso: 'GB', dial: '+44', name: 'United Kingdom', flag: '🇬🇧' },
-  { iso: 'AE', dial: '+971', name: 'UAE', flag: '🇦🇪' },
-  { iso: 'SG', dial: '+65', name: 'Singapore', flag: '🇸🇬' },
-  { iso: 'CA', dial: '+1', name: 'Canada', flag: '🇨🇦' },
-  { iso: 'AU', dial: '+61', name: 'Australia', flag: '🇦🇺' },
-  { iso: 'FR', dial: '+33', name: 'France', flag: '🇫🇷' },
-  { iso: 'DE', dial: '+49', name: 'Germany', flag: '🇩🇪' },
-  { iso: 'SA', dial: '+966', name: 'Saudi Arabia', flag: '🇸🇦' },
-  { iso: 'QA', dial: '+974', name: 'Qatar', flag: '🇶🇦' },
-  { iso: 'MY', dial: '+60', name: 'Malaysia', flag: '🇲🇾' },
-  { iso: 'NZ', dial: '+64', name: 'New Zealand', flag: '🇳🇿' },
+  { iso: 'IN', dial: '+91', name: 'India', flag: '🇮🇳', minDigits: 10, maxDigits: 10 },
+  { iso: 'US', dial: '+1', name: 'United States', flag: '🇺🇸', minDigits: 10, maxDigits: 10 },
+  { iso: 'GB', dial: '+44', name: 'United Kingdom', flag: '🇬🇧', minDigits: 10, maxDigits: 10 },
+  { iso: 'AE', dial: '+971', name: 'UAE', flag: '🇦🇪', minDigits: 9, maxDigits: 9 },
+  { iso: 'SG', dial: '+65', name: 'Singapore', flag: '🇸🇬', minDigits: 8, maxDigits: 8 },
+  { iso: 'CA', dial: '+1', name: 'Canada', flag: '🇨🇦', minDigits: 10, maxDigits: 10 },
+  { iso: 'AU', dial: '+61', name: 'Australia', flag: '🇦🇺', minDigits: 9, maxDigits: 9 },
+  { iso: 'FR', dial: '+33', name: 'France', flag: '🇫🇷', minDigits: 9, maxDigits: 9 },
+  { iso: 'DE', dial: '+49', name: 'Germany', flag: '🇩🇪', minDigits: 10, maxDigits: 11 },
+  { iso: 'SA', dial: '+966', name: 'Saudi Arabia', flag: '🇸🇦', minDigits: 9, maxDigits: 9 },
+  { iso: 'QA', dial: '+974', name: 'Qatar', flag: '🇶🇦', minDigits: 8, maxDigits: 8 },
+  { iso: 'MY', dial: '+60', name: 'Malaysia', flag: '🇲🇾', minDigits: 9, maxDigits: 10 },
+  { iso: 'NZ', dial: '+64', name: 'New Zealand', flag: '🇳🇿', minDigits: 8, maxDigits: 10 },
 ];
 
 export const DEFAULT_COUNTRY = COUNTRIES[0];
@@ -181,13 +185,16 @@ interface LeadFields {
   coupon_code?: string;
   payment_id?: string;
   order_id?: string;
+  // Arbitrary extra fields (e.g. quiz questions + answers) merged into the payload.
+  extra?: Record<string, any>;
 }
 
 /** Build the complete payload (every key present, even if blank). */
-export function buildLeadPayload(fields: LeadFields): LeadPayload {
+export function buildLeadPayload(fields: LeadFields): LeadPayload & Record<string, any> {
   const t = getTracking();
   return {
     ...t,
+    ...(fields.extra ?? {}),
     event_name: fields.event_name,
     first_name: fields.first_name ?? '',
     last_name: fields.last_name ?? '',
@@ -206,18 +213,62 @@ export function buildLeadPayload(fields: LeadFields): LeadPayload {
   };
 }
 
-/** POST the payload to our API route, which enriches with IP and forwards to Pabbly. */
-export function sendLead(fields: LeadFields): Promise<void> {
+/**
+ * Quiz / CTA form submission → /api/form-lead → FORM_PABBLY_WEBHOOK.
+ * Top-of-funnel lead; fired the moment the popup form is submitted.
+ */
+export function sendFormLead(fields: LeadFields): Promise<void> {
   const payload = buildLeadPayload(fields);
-  return fetch('/api/lead', {
+  return fetch('/api/form-lead', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    // keepalive lets the request finish even as we navigate away
+    // keepalive lets the request finish even as we navigate to /checkout
     keepalive: true,
   })
     .then(() => undefined)
     .catch(() => undefined);
+}
+
+export interface PurchaseVerifyResult {
+  ok: boolean;
+  verified: boolean;
+  error?: string;
+}
+
+/**
+ * Confirm a purchase server-side → /api/razorpay-verify → PABBLY_WEBHOOK_URL.
+ * The server fires the purchase webhook ONLY if the Razorpay signature (or the
+ * coupon, in 'coupon' mode) is valid. Returns the verification result so the
+ * checkout can decide what to do next.
+ */
+export async function confirmPurchase(args: {
+  fields: LeadFields;
+  mode: 'razorpay' | 'coupon';
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
+  razorpay_signature?: string;
+  coupon_code?: string;
+}): Promise<PurchaseVerifyResult> {
+  const payload = buildLeadPayload(args.fields);
+  try {
+    const res = await fetch('/api/razorpay-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: args.mode,
+        payload,
+        razorpay_order_id: args.razorpay_order_id,
+        razorpay_payment_id: args.razorpay_payment_id,
+        razorpay_signature: args.razorpay_signature,
+        coupon_code: args.coupon_code,
+      }),
+    });
+    const data = await res.json().catch(() => ({} as any));
+    return { ok: res.ok && !!data.ok, verified: !!data.verified, error: data.error };
+  } catch (err) {
+    return { ok: false, verified: false, error: String(err) };
+  }
 }
 
 export function newPurchaseEventId(): string {

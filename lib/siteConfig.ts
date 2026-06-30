@@ -34,6 +34,12 @@ export const FREE_COUPON_CODE: string = (
   process.env.NEXT_PUBLIC_FREE_COUPON_CODE ?? 'FREEAUDIT'
 ).trim();
 
+// VSL video — full MP4 URL played in the hero section.
+// Override via NEXT_PUBLIC_VSL_VIDEO_URL in .env.local if it ever changes.
+export const VSL_VIDEO_URL: string =
+  process.env.NEXT_PUBLIC_VSL_VIDEO_URL ??
+  'https://tgox-production-bucket.nyc3.cdn.digitaloceanspaces.com/client_funnel_videos/Asveth/ASVETH%20FINAL%20VSL.mp4';
+
 // Brand
 export const BRAND_NAME = 'The Athletic Indian';
 export const SUPPORT_EMAIL =

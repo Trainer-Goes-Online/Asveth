@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { PRICE_DISPLAY } from '../lib/siteConfig';
+import React, { useRef, useState } from 'react';
+import { PRICE_DISPLAY, VSL_VIDEO_URL } from '../lib/siteConfig';
 
 interface HeroSectionProps {
   onOpenQuiz?: () => void;
@@ -7,6 +7,7 @@ interface HeroSectionProps {
 
 const HeroSection: React.FC<HeroSectionProps> = ({ onOpenQuiz }) => {
   const videoRef = useRef<HTMLDivElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const scrollToVideo = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -151,50 +152,74 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onOpenQuiz }) => {
           {/* VIDEO */}
           <div className="video-wrap" ref={videoRef}>
             <div className="video-outer-ring">
-              <div className="video-container clickable-video" onClick={() => alert('Video player would open here - Please add your video URL')}>
-                <div className="video-thumb-bg" style={{ background: 'none' }}>
-                  <img 
-                    src="/video-thumnail-1.png" 
+              <div
+                className={`video-container${isPlaying ? '' : ' clickable-video'}`}
+                onClick={isPlaying ? undefined : () => setIsPlaying(true)}
+              >
+                {isPlaying ? (
+                  <video
+                    className="vsl-video"
+                    src={VSL_VIDEO_URL}
+                    poster="/video-thumnail-1.png"
+                    controls
+                    autoPlay
+                    playsInline
+                    controlsList="nodownload"
                     style={{
+                      position: 'absolute',
+                      inset: '0',
                       width: '100%',
                       height: '100%',
                       objectFit: 'cover',
-                      objectPosition: 'center top',
-                      position: 'absolute',
-                      inset: '0'
+                      background: '#000'
                     }}
-                    alt="Video thumbnail"
                   />
-                  <div style={{
-                    position: 'absolute',
-                    inset: '0',
-                    background: 'linear-gradient(180deg,rgba(0,0,0,0.1) 0%,rgba(0,0,0,0.55) 100%)'
-                  }}></div>
-                </div>
-                
-                {/* Large Premium Play Button */}
-                <div className="video-play-button">
-                  <div className="play-button-outer">
-                    <div className="play-button-inner">
-                      <svg 
-                        width="32" 
-                        height="32" 
-                        viewBox="0 0 24 24" 
-                        fill="none"
-                        className="play-icon"
-                      >
-                        <path 
-                          d="M8 5v14l11-7z" 
-                          fill="currentColor"
-                        />
-                      </svg>
+                ) : (
+                  <>
+                    <div className="video-thumb-bg" style={{ background: 'none' }}>
+                      <img
+                        src="/video-thumnail-1.png"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'center top',
+                          position: 'absolute',
+                          inset: '0'
+                        }}
+                        alt="Video thumbnail"
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        inset: '0',
+                        background: 'linear-gradient(180deg,rgba(0,0,0,0.1) 0%,rgba(0,0,0,0.55) 100%)'
+                      }}></div>
                     </div>
-                  </div>
-                  <div className="play-button-pulse"></div>
-                </div>
-                
-                
-                <div className="video-overlay"></div>
+
+                    {/* Large Premium Play Button */}
+                    <div className="video-play-button">
+                      <div className="play-button-outer">
+                        <div className="play-button-inner">
+                          <svg
+                            width="32"
+                            height="32"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            className="play-icon"
+                          >
+                            <path
+                              d="M8 5v14l11-7z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="play-button-pulse"></div>
+                    </div>
+
+                    <div className="video-overlay"></div>
+                  </>
+                )}
               </div>
             </div>
           </div>

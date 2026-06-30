@@ -28,21 +28,50 @@ const StrategySection: React.FC = () => {
     }
   ];
 
-  // Scroll-driven progressive timeline: each number lights up as it crosses
-  // the activation line. Scrolling down lights 1 → 2 → 3, scrolling up
-  // dims 3 → 2 → 1 (cumulative, based on each node's position).
+  // Smooth scroll-driven timeline: one continuous rail whose fill height tracks
+  // the scroll position (not stepped). Each number lights up the moment the
+  // fill reaches its centre; the most-recent one pulses as the "current" node.
   const numRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const [activeCount, setActiveCount] = useState(0);
+  const [rail, setRail] = useState({ left: 0, top: 0, height: 0, fill: 0 });
 
   useEffect(() => {
     let raf = 0;
     const compute = () => {
-      // Activation line sits a little below the vertical centre of the viewport.
-      const line = window.innerHeight * 0.62;
+      const wrap = wrapRef.current;
+      const nodes = numRefs.current.filter(Boolean) as HTMLDivElement[];
+      if (!wrap || nodes.length === 0) return;
+
+      const wrapRect = wrap.getBoundingClientRect();
+      const first = nodes[0].getBoundingClientRect();
+      const last = nodes[nodes.length - 1].getBoundingClientRect();
+
+      // Rail geometry (relative to the wrap): runs node-1 centre → node-N centre.
+      const centerX = first.left + first.width / 2 - wrapRect.left;
+      const firstCenterY = first.top + first.height / 2 - wrapRect.top;
+      const lastCenterY = last.top + last.height / 2 - wrapRect.top;
+      const trackHeight = Math.max(0, lastCenterY - firstCenterY);
+
+      // Activation line in the viewport; fill = how far it has passed node 1.
+      const activationY = window.innerHeight * 0.55;
+      const firstCenterViewport = first.top + first.height / 2;
+      const fill = Math.max(0, Math.min(trackHeight, activationY - firstCenterViewport));
+
       let count = 0;
-      for (const el of numRefs.current) {
-        if (el && el.getBoundingClientRect().top < line) count += 1;
+      for (const n of nodes) {
+        const r = n.getBoundingClientRect();
+        if (r.top + r.height / 2 <= activationY) count += 1;
       }
+
+      setRail((prev) =>
+        prev.left === centerX &&
+        prev.top === firstCenterY &&
+        prev.height === trackHeight &&
+        Math.abs(prev.fill - fill) < 0.5
+          ? prev
+          : { left: centerX, top: firstCenterY, height: trackHeight, fill }
+      );
       setActiveCount((prev) => (prev === count ? prev : count));
     };
     const onScroll = () => {
@@ -50,10 +79,13 @@ const StrategySection: React.FC = () => {
       raf = requestAnimationFrame(compute);
     };
     compute();
+    // Recompute once layout/fonts settle so the rail lands on the node centres.
+    const settle = setTimeout(compute, 300);
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(settle);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
     };
@@ -75,25 +107,30 @@ const StrategySection: React.FC = () => {
           Here's exactly what you get in your Health Audit — ₹6,000 worth of health expertise and guidance for {PRICE_DISPLAY}.
         </p>
 
-        <div className="steps-wrap">
+        <div className="steps-wrap" ref={wrapRef}>
+          {/* one continuous rail; its fill height tracks scroll smoothly */}
+          <div
+            className="steps-rail"
+            style={{ left: rail.left, top: rail.top, height: rail.height }}
+            aria-hidden="true"
+          >
+            <div className="steps-rail-fill" style={{ height: rail.fill }} />
+          </div>
+
           {steps.map((step, index) => {
-            const numberOn = index < activeCount;        // this node is lit
-            const lineOn = index + 1 < activeCount;       // next node is lit → fill this rail
+            const numberOn = index < activeCount;          // this node is lit
+            const isCurrent = index === activeCount - 1;    // most-recent → pulse
             return (
-            <div
-              key={index}
-              className={`step-row ${lineOn ? 'line-on' : ''}`}
-            >
+            <div key={index} className="step-row">
               <div className="step-left">
                 <div
-                  className={`step-num ${numberOn ? 'is-active' : ''}`}
+                  className={`step-num ${numberOn ? 'is-active' : ''} ${isCurrent ? 'is-current' : ''}`}
                   ref={(el) => {
                     numRefs.current[index] = el;
                   }}
                 >
                   {step.number}
                 </div>
-                <div className="step-line"></div>
               </div>
               <div className="step-card">
                 <div className="card-top">

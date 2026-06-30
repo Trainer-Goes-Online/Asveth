@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PRICE_DISPLAY } from '../lib/siteConfig';
+import { COUNTRIES, DEFAULT_COUNTRY, sendFormLead } from '../lib/tracking';
+import { validateName, validateEmail, validatePhone, findCountry, phoneDigits } from '../lib/validation';
 
 interface QuizPopupProps {
   isOpen: boolean;
@@ -12,6 +14,7 @@ interface QuizPopupProps {
 interface FormData {
   name: string;
   email: string;
+  countryIso: string;
   phone: string;
 }
 
@@ -21,11 +24,46 @@ interface FormErrors {
   phone?: string;
 }
 
+// Quiz questions — single source of truth, used both to render the steps and to
+// build the readable question→answer payload sent to the form webhook.
+const QUIZ = [
+  {
+    question: 'What has stopped you from getting in shape until now?',
+    options: [
+      { val: 'guidance', text: "I didn't have the right guidance" },
+      { val: 'time', text: 'I have no time with my busy schedule' },
+      { val: 'consistency', text: "I've tried before but couldn't stay consistent" },
+      { val: 'afford', text: "I didn't think I could afford it" },
+    ],
+  },
+  {
+    question: 'Have you tried any fitness program, coach or diet before?',
+    options: [
+      { val: 'first', text: 'No, this would be my first time' },
+      { val: 'quit', text: "Yes — but I quit or it didn't work" },
+      { val: 'lost', text: 'Yes — it worked but I lost progress after stopping' },
+    ],
+  },
+  {
+    question: 'What is your #1 goal from this program?',
+    options: [
+      { val: 'lean', text: 'Lose weight & get lean' },
+      { val: 'muscle', text: 'Build muscle & look athletic' },
+      { val: 'energy', text: 'Improve energy, stamina & performance' },
+      { val: 'recomp', text: 'Complete body recomposition — lose fat & build muscle together' },
+    ],
+  },
+];
+
+const DETAILS_STEP = QUIZ.length; // step index of the details form
+const CONFIRM_STEP = QUIZ.length + 1; // step index of the confirmation screen
+const TOTAL_SEGMENTS = QUIZ.length + 2;
+
 const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<{[key: string]: string}>({});
-  const [formData, setFormData] = useState<FormData>({ name: '', email: '', phone: '' });
+  const [formData, setFormData] = useState<FormData>({ name: '', email: '', countryIso: DEFAULT_COUNTRY.iso, phone: '' });
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,7 +72,7 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
     if (isOpen) {
       setCurrentStep(0);
       setAnswers({});
-      setFormData({ name: '', email: '', phone: '' });
+      setFormData({ name: '', email: '', countryIso: DEFAULT_COUNTRY.iso, phone: '' });
       setFormErrors({});
       setSubmitting(false);
     }
@@ -76,41 +114,24 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
 
   const handleFieldChange = (field: keyof FormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    // Clear the error for this field as the user corrects it
-    setFormErrors(prev => ({ ...prev, [field]: undefined }));
+    // Clear the error for this field as the user corrects it. Changing the
+    // country also clears any (now stale) phone error.
+    setFormErrors(prev => ({
+      ...prev,
+      [field]: undefined,
+      ...(field === 'countryIso' ? { phone: undefined } : {}),
+    }));
   };
 
   const validateDetails = (): FormErrors => {
     const errors: FormErrors = {};
-
-    const name = formData.name.trim();
-    const email = formData.email.trim();
-    const phone = formData.phone.trim();
-
-    // Name: required, at least 2 characters, letters/spaces only
-    if (!name) {
-      errors.name = 'Please enter your full name.';
-    } else if (name.length < 2) {
-      errors.name = 'Name must be at least 2 characters.';
-    } else if (!/^[a-zA-Z][a-zA-Z\s.'-]*$/.test(name)) {
-      errors.name = 'Please enter a valid name.';
-    }
-
-    // Email: optional, but must be valid if provided
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errors.email = 'Please enter a valid email address.';
-    }
-
-    // Phone: required, 10–15 digits (optional leading +)
-    const digits = phone.replace(/[^\d]/g, '');
-    if (!phone) {
-      errors.phone = 'Please enter your phone number.';
-    } else if (!/^\+?[\d\s-]+$/.test(phone)) {
-      errors.phone = 'Phone can only contain numbers.';
-    } else if (digits.length < 10 || digits.length > 15) {
-      errors.phone = 'Enter a valid phone number (10–15 digits).';
-    }
-
+    // Strict validation — same rules as the checkout form (shared helpers).
+    const nameErr = validateName(formData.name, 'full name');
+    if (nameErr) errors.name = nameErr;
+    const emailErr = validateEmail(formData.email, true); // required + valid format
+    if (emailErr) errors.email = emailErr;
+    const phoneErr = validatePhone(formData.phone, formData.countryIso);
+    if (phoneErr) errors.phone = phoneErr;
     return errors;
   };
 
@@ -124,8 +145,20 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
     const fullName = formData.name.trim();
     const firstName = fullName.split(/\s+/)[0] || '';
     const lastName = fullName.split(/\s+/).slice(1).join(' ');
+    const country = findCountry(formData.countryIso);
+    const fullPhone = `${country.dial}${phoneDigits(formData.phone)}`;
 
-    // Persist the lead so the checkout page can prefill / reference it
+    // Build readable question→answer pairs for Pabbly mapping.
+    const quizExtra: Record<string, string> = {};
+    QUIZ.forEach((q, idx) => {
+      const selected = q.options.find((o) => o.val === answers[String(idx)]);
+      quizExtra[`question_${idx + 1}`] = q.question;
+      quizExtra[`answer_${idx + 1}`] = selected ? selected.text : '';
+    });
+
+    // Persist the lead so the checkout page can prefill / reference it.
+    // Store both the full E.164 phone (for reference) and the national number
+    // + country so the checkout can prefill the right country and digits.
     try {
       localStorage.setItem(
         'healthAuditLead',
@@ -134,7 +167,9 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
           firstName,
           lastName,
           email: formData.email.trim(),
-          phone: formData.phone.trim(),
+          phone: fullPhone,
+          phone_national: phoneDigits(formData.phone),
+          country_code: country.iso,
           quiz: answers,
           submittedAt: new Date().toISOString(),
         })
@@ -143,9 +178,18 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
       /* ignore storage errors */
     }
 
-    // NOTE: the Pabbly webhook is intentionally NOT fired here. It fires only
-    // once payment is successful (or a 100%-off coupon is redeemed) on the
-    // checkout page. The details are stored above for that event.
+    // Fire the top-of-funnel lead to FORM_PABBLY_WEBHOOK with the quiz Q&A.
+    // keepalive ensures it completes even as we navigate to /checkout.
+    sendFormLead({
+      event_name: 'QuizLead',
+      first_name: firstName,
+      last_name: lastName,
+      email: formData.email.trim(),
+      phone: fullPhone,
+      country_code: country.iso,
+      amount: 0,
+      extra: quizExtra,
+    });
 
     // Redirect to the checkout page after successful submission
     router.push('/checkout');
@@ -342,6 +386,44 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
         .qpop-input::placeholder { color: rgba(255,255,255,0.25); }
         .qpop-input:focus { border-color: rgba(249,115,22,0.5); }
         .qpop-input-error { border-color: rgba(239,68,68,0.8) !important; }
+
+        /* ── PHONE ROW (country code + number) ── */
+        .qpop-phone-row { display: flex; align-items: stretch; gap: 8px; }
+        .qpop-dial {
+          flex: 0 0 auto;
+          width: 98px;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 8px;
+          padding: 12px 8px;
+          font-size: 13px;
+          color: #fff;
+          font-family: 'Barlow', sans-serif;
+          outline: none;
+          cursor: pointer;
+          transition: border-color 0.2s;
+        }
+        .qpop-dial:focus { border-color: rgba(249,115,22,0.5); }
+        .qpop-dial option { background: #14161e; color: #fff; }
+        .qpop-phone-input {
+          flex: 1;
+          min-width: 0;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 8px;
+          padding: 12px 14px;
+          font-size: 13.5px;
+          color: #fff;
+          font-family: 'Barlow', sans-serif;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .qpop-phone-input::placeholder { color: rgba(255,255,255,0.25); }
+        .qpop-phone-input:focus { border-color: rgba(249,115,22,0.5); }
+        .qpop-phone-row.qpop-input-error .qpop-dial,
+        .qpop-phone-row.qpop-input-error .qpop-phone-input {
+          border-color: rgba(239,68,68,0.8);
+        }
         .qpop-error-msg {
           margin-top: 5px;
           font-size: 11.5px;
@@ -527,8 +609,8 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
 
           {/* Progress Bar */}
           <div className="qpop-progress">
-            {[0,1,2,3,4].map(i => (
-              <div 
+            {Array.from({ length: TOTAL_SEGMENTS }, (_, i) => (
+              <div
                 key={i}
                 className={`qpop-seg ${
                   i < currentStep ? 'done' : i === currentStep ? 'active' : ''
@@ -537,105 +619,40 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
             ))}
           </div>
 
-          {/* ── STEP 1 ── */}
-          <div className={`qpop-step ${currentStep === 0 ? 'active' : ''}`}>
-            <div className="qpop-body">
-              <div className="qpop-q">What has stopped you from getting in shape until now?</div>
-              <div className="qpop-options">
-                {[
-                  { val: 'guidance', text: "I didn't have the right guidance" },
-                  { val: 'time', text: "I have no time with my busy schedule" },
-                  { val: 'consistency', text: "I've tried before but couldn't stay consistent" },
-                  { val: 'afford', text: "I didn't think I could afford it" }
-                ].map((option, idx) => (
-                  <div 
-                    key={idx}
-                    className={`qpop-option ${answers['0'] === option.val ? 'selected' : ''}`}
-                    onClick={() => handleOptionClick('0', option.val)}
-                  >
-                    <div className="qpop-radio"></div>
-                    <div className="qpop-option-text">{option.text}</div>
-                  </div>
-                ))}
+          {/* ── QUIZ STEPS (data-driven) ── */}
+          {QUIZ.map((q, idx) => (
+            <div key={idx} className={`qpop-step ${currentStep === idx ? 'active' : ''}`}>
+              <div className="qpop-body">
+                <div className="qpop-q">{q.question}</div>
+                <div className="qpop-options">
+                  {q.options.map((option, oIdx) => (
+                    <div
+                      key={oIdx}
+                      className={`qpop-option ${answers[String(idx)] === option.val ? 'selected' : ''}`}
+                      onClick={() => handleOptionClick(String(idx), option.val)}
+                    >
+                      <div className="qpop-radio"></div>
+                      <div className="qpop-option-text">{option.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className={`qpop-footer ${idx === 0 ? 'qpop-footer-only-next' : ''}`}>
+                {idx > 0 && (
+                  <button className="qpop-back" onClick={() => setCurrentStep(idx - 1)}>← BACK</button>
+                )}
+                <button
+                  className="qpop-next"
+                  onClick={() => handleNext(idx + 1, () => validateStep(idx))}
+                >
+                  NEXT →
+                </button>
               </div>
             </div>
-            <div className="qpop-footer qpop-footer-only-next">
-              <button 
-                className="qpop-next" 
-                onClick={() => handleNext(1, () => validateStep(0))}
-              >
-                NEXT →
-              </button>
-            </div>
-          </div>
+          ))}
 
-          {/* ── STEP 2 ── */}
-          <div className={`qpop-step ${currentStep === 1 ? 'active' : ''}`}>
-            <div className="qpop-body">
-              <div className="qpop-q">Have you tried any fitness program, coach or diet before?</div>
-              <div className="qpop-options">
-                {[
-                  { val: 'first', text: "No, this would be my first time" },
-                  { val: 'quit', text: "Yes — but I quit or it didn't work" },
-                  { val: 'lost', text: "Yes — it worked but I lost progress after stopping" }
-                ].map((option, idx) => (
-                  <div 
-                    key={idx}
-                    className={`qpop-option ${answers['1'] === option.val ? 'selected' : ''}`}
-                    onClick={() => handleOptionClick('1', option.val)}
-                  >
-                    <div className="qpop-radio"></div>
-                    <div className="qpop-option-text">{option.text}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="qpop-footer">
-              <button className="qpop-back" onClick={() => setCurrentStep(0)}>← BACK</button>
-              <button 
-                className="qpop-next" 
-                onClick={() => handleNext(2, () => validateStep(1))}
-              >
-                NEXT →
-              </button>
-            </div>
-          </div>
-
-          {/* ── STEP 3 ── */}
-          <div className={`qpop-step ${currentStep === 2 ? 'active' : ''}`}>
-            <div className="qpop-body">
-              <div className="qpop-q">What is your #1 goal from this program?</div>
-              <div className="qpop-options">
-                {[
-                  { val: 'lean', text: "Lose weight & get lean" },
-                  { val: 'muscle', text: "Build muscle & look athletic" },
-                  { val: 'energy', text: "Improve energy, stamina & performance" },
-                  { val: 'recomp', text: "Complete body recomposition — lose fat & build muscle together" }
-                ].map((option, idx) => (
-                  <div 
-                    key={idx}
-                    className={`qpop-option ${answers['2'] === option.val ? 'selected' : ''}`}
-                    onClick={() => handleOptionClick('2', option.val)}
-                  >
-                    <div className="qpop-radio"></div>
-                    <div className="qpop-option-text">{option.text}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="qpop-footer">
-              <button className="qpop-back" onClick={() => setCurrentStep(1)}>← BACK</button>
-              <button 
-                className="qpop-next" 
-                onClick={() => handleNext(3, () => validateStep(2))}
-              >
-                NEXT →
-              </button>
-            </div>
-          </div>
-
-          {/* ── STEP 4: DETAILS ── */}
-          <div className={`qpop-step ${currentStep === 3 ? 'active' : ''}`}>
+          {/* ── DETAILS STEP ── */}
+          <div className={`qpop-step ${currentStep === DETAILS_STEP ? 'active' : ''}`}>
             <div className="qpop-form-header">
               <div className="qpop-form-title">Great! One last step — your details</div>
               <div className="qpop-form-sub"><span>⏱</span> Almost done — we need this to book your call</div>
@@ -655,13 +672,13 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
                 {formErrors.name && <div className="qpop-error-msg">{formErrors.name}</div>}
               </div>
               <div>
-                <div className="qpop-field-label">Email</div>
+                <div className="qpop-field-label">Email <span className="qpop-field-req">*</span></div>
                 <input
                   className={`qpop-input ${formErrors.email ? 'qpop-input-error' : ''}`}
                   id="qpopEmail"
                   type="email"
                   autoComplete="email"
-                  placeholder="Enter your email (optional)"
+                  placeholder="Enter your email"
                   value={formData.email}
                   onChange={(e) => handleFieldChange('email', e.target.value)}
                 />
@@ -669,22 +686,36 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
               </div>
               <div>
                 <div className="qpop-field-label">Phone Number <span className="qpop-field-req">*</span></div>
-                <input
-                  className={`qpop-input ${formErrors.phone ? 'qpop-input-error' : ''}`}
-                  id="qpopPhone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="Enter your phone number"
-                  value={formData.phone}
-                  onChange={(e) => handleFieldChange('phone', e.target.value)}
-                />
+                <div className={`qpop-phone-row ${formErrors.phone ? 'qpop-input-error' : ''}`}>
+                  <select
+                    className="qpop-dial"
+                    aria-label="Country code"
+                    value={formData.countryIso}
+                    onChange={(e) => handleFieldChange('countryIso', e.target.value)}
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={c.iso} value={c.iso}>
+                        {c.flag} {c.dial}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="qpop-phone-input"
+                    id="qpopPhone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    placeholder="Phone number"
+                    value={formData.phone}
+                    onChange={(e) => handleFieldChange('phone', e.target.value)}
+                  />
+                </div>
                 {formErrors.phone && <div className="qpop-error-msg">{formErrors.phone}</div>}
               </div>
             </div>
             <div className="qpop-privacy">🔒 We'll only contact you about your fitness plan</div>
             <div className="qpop-footer">
-              <button className="qpop-back" onClick={() => setCurrentStep(2)}>← BACK</button>
+              <button className="qpop-back" onClick={() => setCurrentStep(DETAILS_STEP - 1)}>← BACK</button>
               <button
                 className="qpop-next"
                 onClick={handleSubmitDetails}
@@ -695,8 +726,8 @@ const QuizPopup: React.FC<QuizPopupProps> = ({ isOpen, onClose }) => {
             </div>
           </div>
 
-          {/* ── STEP 5: BOOKING ── */}
-          <div className={`qpop-step ${currentStep === 4 ? 'active' : ''}`}>
+          {/* ── CONFIRMATION STEP ── */}
+          <div className={`qpop-step ${currentStep === CONFIRM_STEP ? 'active' : ''}`}>
             <div className="qpop-confirm">
               <div className="qpop-confirm-icon">🎯</div>
               <div className="qpop-confirm-tag">Health Audit</div>
